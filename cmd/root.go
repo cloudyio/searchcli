@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -32,11 +32,14 @@ var defaultBang string
 
 func loadConfig() Config {
 	var config Config
-	data, err := ioutil.ReadFile(configFilePath)
+	data, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return config
 	}
-	json.Unmarshal(data, &config)
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		return Config{}
+	}
 	return config
 }
 
@@ -47,7 +50,7 @@ func saveConfig(config Config) {
 	}
 
 	data, _ := json.MarshalIndent(config, "", "  ")
-	if err := ioutil.WriteFile(configFilePath, data, 0644); err != nil {
+	if err := os.WriteFile(configFilePath, data, 0644); err != nil {
 		log.Fatalf("Failed to save config: %v", err)
 	}
 }
@@ -57,9 +60,14 @@ func loadBangs(filename string) ([]Bang, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
 
-	bytes, err := ioutil.ReadAll(file)
+		}
+	}(file)
+
+	bytes, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +171,10 @@ func init() {
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Oops. An error occurred! '%s'\n", err)
+		_, err := fmt.Fprintf(os.Stderr, "Oops. An error occurred! '%s'\n", err)
+		if err != nil {
+			return
+		}
 		os.Exit(1)
 	}
 }
