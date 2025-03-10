@@ -28,7 +28,9 @@ jobs:
 
       - name: Prepare Inno Setup Script
         run: |
-          copy search.exe "${{ github.workspace }}\search.exe"
+          mkdir -p "${{ github.workspace }}\build"
+
+          copy search.exe "${{ github.workspace }}\build\search.exe"
 
       - name: Compile Inno Setup Script
         run: |
