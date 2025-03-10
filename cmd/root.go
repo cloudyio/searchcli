@@ -1,17 +1,18 @@
 package cmd
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
-	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
+
+var embeddedBangs []byte
 
 type Bang struct {
 	C  string `json:"c"`
@@ -27,7 +28,9 @@ type Config struct {
 	DefaultBang string `json:"default_bang"`
 }
 
-var configFilePath = filepath.Join(os.Getenv("HOME"), ".searchcli", "config.json")
+var configDir = filepath.Join(os.Getenv("USERPROFILE"), ".searchcli")
+var bangsFilePathProd = filepath.Join(configDir, "bangs.json")
+var configFilePath = filepath.Join(configDir, "config.json")
 var defaultBang string
 
 func loadConfig() Config {
@@ -44,39 +47,57 @@ func loadConfig() Config {
 }
 
 func saveConfig(config Config) {
-	dir := filepath.Dir(configFilePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0755); err != nil {
 		log.Fatalf("Failed to create config directory: %v", err)
 	}
-
 	data, _ := json.MarshalIndent(config, "", "  ")
 	if err := os.WriteFile(configFilePath, data, 0644); err != nil {
 		log.Fatalf("Failed to save config: %v", err)
 	}
 }
 
-func loadBangs(filename string) ([]Bang, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
+func saveBangs(bangs []Bang) error {
+	dir := filepath.Dir(bangsFilePathProd)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create bangs directory: %v", err)
 	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-
-		}
-	}(file)
-
-	bytes, err := io.ReadAll(file)
+	data, err := json.MarshalIndent(bangs, "", "  ")
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to marshal bangs: %v", err)
 	}
+	if err := os.WriteFile(bangsFilePathProd, data, 0644); err != nil {
+		return fmt.Errorf("failed to save bangs: %v", err)
+	}
+	return nil
+}
 
+func loadBangs() ([]Bang, error) {
 	var bangs []Bang
-	if err := json.Unmarshal(bytes, &bangs); err != nil {
-		return nil, err
+	if _, err := os.Stat(bangsFilePathProd); os.IsNotExist(err) {
+		if len(embeddedBangs) > 0 {
+			if err := saveBangs([]Bang{}); err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		file, err := os.Open(bangsFilePathProd)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+		bytes, err := os.ReadFile(bangsFilePathProd)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(bytes, &bangs); err != nil {
+			return nil, err
+		}
 	}
-
+	if len(bangs) == 0 && len(embeddedBangs) > 0 {
+		if err := json.Unmarshal(embeddedBangs, &bangs); err != nil {
+			return nil, err
+		}
+	}
 	return bangs, nil
 }
 
@@ -90,47 +111,31 @@ func findBang(shortcut string, bangs []Bang) *Bang {
 }
 
 func openURL(url string) {
-	var err error
-	switch runtime.GOOS {
-	case "windows":
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	case "darwin":
-		err = exec.Command("open", url).Start()
-	case "linux":
-		err = exec.Command("xdg-open", url).Start()
-	default:
-		log.Fatalf("Unsupported platform %s", runtime.GOOS)
-	}
-
+	err := browser.OpenURL(url)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
 var rootCmd = &cobra.Command{
-	Use:                "search",
-	Short:              "searchcli is a tool that makes searching like a search engine in the CLI extremely easy",
-	Long:               "search CLI is a basic tool that uses DuckDuckGo bangs to create a seamless search engine experience.",
-	DisableFlagParsing: true,
-	Args:               cobra.ArbitraryArgs,
+	Use:   "search",
+	Short: "searchcli is a tool that makes searching like a search engine in the CLI extremely easy",
+	Long:  "search CLI is a basic tool that uses DuckDuckGo bangs to create a seamless search engine experience.",
+	Args:  cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			fmt.Println("Please provide a search query.")
 			return
 		}
-
 		config := loadConfig()
-		bangs, err := loadBangs("bangs.json")
+		bangs, err := loadBangs()
 		if err != nil {
 			log.Fatalf("Failed to load bangs: %v", err)
 		}
-
 		query := strings.Join(args, " ")
 		parts := strings.SplitN(query, " ", 2)
-
 		var shortcut string
 		var searchTerm string
-
 		if len(parts) > 1 && strings.HasPrefix(parts[0], "!") {
 			shortcut = strings.TrimPrefix(parts[0], "!")
 			searchTerm = parts[1]
@@ -142,7 +147,6 @@ var rootCmd = &cobra.Command{
 			openURL(url)
 			return
 		}
-
 		bang := findBang(shortcut, bangs)
 		if bang != nil {
 			searchURL := strings.Replace(bang.U, "{{{s", searchTerm, 1)
@@ -171,10 +175,7 @@ func init() {
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		_, err := fmt.Fprintf(os.Stderr, "Oops. An error occurred! '%s'\n", err)
-		if err != nil {
-			return
-		}
+		fmt.Fprintf(os.Stderr, "Oops. An error occurred! '%s'\n", err)
 		os.Exit(1)
 	}
 }

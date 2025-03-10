@@ -1,0 +1,41 @@
+name: Build and Release Setup
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.19'
+
+      - name: Install Inno Setup via Chocolatey
+        run: choco install innosetup
+
+      - name: Build the Go app
+        run: |
+          go build -o search.exe ./cmd
+
+      - name: Prepare Inno Setup Script
+        run: |
+          copy search.exe "$(System.DefaultWorkingDirectory)\search.exe"
+
+      - name: Compile Inno Setup Script
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup/setup.iss
+
+      - name: Upload installer to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          files: mysetup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
