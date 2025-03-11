@@ -48,7 +48,11 @@ jobs:
 
       - name: Build
         run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o output-${{ matrix.goos }}-${{ matrix.goarch }}
+          $env:GOOS="${{ matrix.goos }}"
+          $env:GOARCH="${{ matrix.goarch }}"
+          go build -o output-${{ matrix.goos }}-${{ matrix.goarch }}
+          shell: pwsh
+          
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
