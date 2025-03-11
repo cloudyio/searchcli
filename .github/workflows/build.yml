@@ -39,6 +39,6 @@ jobs:
       - name: Upload installer to GitHub Releases
         uses: softprops/action-gh-release@v1
         with:
-          files: mysetup.exe
+          files: setup/Output/mysetup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
