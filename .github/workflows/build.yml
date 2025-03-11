@@ -1,44 +1,59 @@
-name: Build and Release Setup
+name: Go Build releases
 
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - '*'
 
 jobs:
   build:
-    runs-on: windows-latest
-
+    name: Build on ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-latest
+            arch: arm64
+            goos: linux
+            goarch: arm64
+          - os: macos-latest
+            arch: amd64
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+          - os: windows-latest
+            arch: amd64
+            goos: windows
+            goarch: amd64
+          - os: windows-latest
+            arch: arm64
+            goos: windows
+            goarch: arm64
     steps:
-      - name: Checkout the code
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v3
+      - name: Set up Go 1.24
+        uses: actions/setup-go@v5
         with:
           go-version: '1.24'
 
-      - name: Install Inno Setup via Chocolatey
-        run: choco install innosetup
-
-      - name: Build the Go app
+      - name: Build
         run: |
-          go build -o search.exe ./cmd
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o output-${{ matrix.goos }}-${{ matrix.goarch }}
 
-      - name: Prepare Inno Setup Script
-        run: |
-          mkdir -p "${{ github.workspace }}\build"
-
-          copy search.exe "${{ github.workspace }}\build\search.exe"
-
-      - name: Compile Inno Setup Script
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup/setup.iss
-
-      - name: Upload installer to GitHub Releases
-        uses: softprops/action-gh-release@v1
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
         with:
-          files: setup/Output/mysetup.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          files: output-${{ matrix.goos }}-${{ matrix.goarch }}
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          token: ${{ secrets.GITHUB_TOKEN }}
