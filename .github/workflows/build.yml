@@ -48,11 +48,15 @@ jobs:
 
       - name: Build
         run: |
-          $env:GOOS="${{ matrix.goos }}"
-          $env:GOARCH="${{ matrix.goarch }}"
-          go build -o output-${{ matrix.goos }}-${{ matrix.goarch }}
-          shell: pwsh
-          
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            $Env:GOOS="${{ matrix.goos }}"
+            $Env:GOARCH="${{ matrix.goarch }}"
+            go build -o output-${{ matrix.goos }}-${{ matrix.goarch }}
+          else
+            GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o output-${{ matrix.goos }}-${{ matrix.goarch }}
+          fi
+        shell: bash
+
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
